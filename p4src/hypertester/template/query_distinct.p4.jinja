@@ -1,0 +1,167 @@
+#ifndef _HYPERTESTER_QUERY_DISTINCT_H_
+#define _HYPERTESTER_QUERY_DISTINCT_H_
+
+#define DISTINCT  0
+#define DUPLICATE 1
+
+{% for distinct in distinct_queries %}
+
+header_type {{ distinct.name  }}_md_t {
+	fields {
+		dgst : 16;
+		idx1 : 16;
+		idx2 : 16;
+		dgst1 : 16;
+		dgst2 : 16;
+		query_res1 : 16;
+		query_res2 : 16;
+		output : 1;
+	}
+}
+metadata {{ distinct.name  }}_md_t {{ distinct.name }}_md;
+
+field_list {{ distinct.name }}_keys { 
+	{% for key in distinct.key_fields %}
+		{{ key.p4 }};
+	{% endfor %}
+}			
+field_list_calculation calc_{{ distinct.name }}_dgst { 
+	input { 
+		{{ distinct.name }}_keys;
+	} 
+	algorithm : crc16; 
+	output_width : 16; 
+} 
+field_list_calculation calc_{{ distinct.name }}_index { 
+	input { 
+		{{ distinct.name }}_keys;
+	} 
+	algorithm : crc32; 
+	output_width : 16; 
+} 
+action do_hash_{{ distinct.name }} () {
+	modify_field_with_hash_based_offset({{ distinct.name }}_md.dgst, 0, calc_{{ distinct.name }}_dgst, 65536);
+	modify_field_with_hash_based_offset({{ distinct.name }}_md.idx1, 0, calc_{{ distinct.name }}_index, 65536);
+	xor({{ distinct.name }}_md.idx2, {{ distinct.name }}_md.idx1, {{ distinct.name }}_md.dgst); 
+}
+table hash_{{ distinct.name }} {
+	actions {
+		do_hash_{{ distinct.name }};
+	}
+	size : 1;
+	default_action : do_hash_{{ distinct.name }}();
+}
+
+register {{ distinct.name }}_array1 {
+	width : 16; 
+	instance_count : 65536; 
+} 
+register {{ distinct.name }}_array2 {
+	width : 16;
+	instance_count : 65536; 
+} 
+
+action do_query_{{ distinct.name }}() { 
+	register_read({{ distinct.name }}_md.dgst1, {{ distinct.name }}_array1, {{ distinct.name }}_md.idx1); 
+	subtract({{ distinct.name }}_md.query_res1, {{ distinct.name }}_md.dgst1, {{ distinct.name }}_md.dgst);
+	register_read({{ distinct.name }}_md.dgst2, {{ distinct.name }}_array2, {{ distinct.name }}_md.idx2);
+	subtract({{ distinct.name }}_md.query_res2, {{ distinct.name }}_md.dgst2, {{ distinct.name }}_md.dgst); 
+} 
+
+table query_{{ distinct.name }} {
+	actions {
+		do_query_{{ distinct.name }};
+	}
+	size : 1;
+	default_action : do_query_{{ distinct.name }}();
+}
+
+/* query_res1 or query_res2 is 0. */
+action do_not_update_{{ distinct.name }}() {
+	modify_field({{ distinct.name }}_md.output, DUPLICATE);
+}
+
+action do_update_{{ distinct.name }}_array1() {
+	register_write({{ distinct.name }}_array1, {{ distinct.name }}_md.idx1, {{ distinct.name }}_md.dgst);
+	modify_field({{ distinct.name }}_md.output, DISTINCT);
+}
+
+action do_update_{{ distinct.name }}_array2() {
+	register_write({{ distinct.name }}_array2, {{ distinct.name }}_md.idx2, {{ distinct.name }}_md.dgst);
+	modify_field({{ distinct.name }}_md.output, DISTINCT);
+}
+
+
+field_list field_list {{ distinct.name }}_dgst_keys {
+	{{ distinct.name }}_md.dgst2;
+}
+
+action do_update_{{ distinct.name }} {
+	register_write({{ distinct.name }}_array1, {{ distinct.name }}_md.idx1, {{ distinct.name }}_md.dgst);
+	register_write({{ distinct.name }}_array2, {{ distinct.name }}_md.idx2, {{ distinct.name }}_md.dgst1);
+	modify_field({{ distinct.name }}_md.output, DISTINCT);
+	generate_digest({{ distinct.name }}_dgst_keys);
+}
+
+//----------------------------------------------------------------------
+// res1	res2 dgst1 dgst2 => action								priority
+//   0    *	   *     *	 => do_not_update_{{ distinct.name }}	   0
+//	 *	  0    *	 *   => do_not_update_{{ distinct.name }}	   1
+//	 *    *	   0     *   => do_update_{{ distinct.name }}_array1   2
+//	 *    *	   *     0   => do_update_{{ distinct.name }}_array2   3
+//	 *    *	   *     *   => do_update_{{ distinct.name }}		   4
+//----------------------------------------------------------------------
+table update_{{ distinct.name }} {
+	reads {
+		{{ distinct.name }}_md.query_res1 : ternary;
+		{{ distinct.name }}_md.query_res2 : ternary;
+		{{ distinct.name }}_md.dgst1 : ternary;
+		{{ distinct.name }}_md.dgst2 : ternary;
+	}
+	actions {
+		do_not_update_{{ distinct.name }};
+		do_update_{{ distinct.name }}_array1;
+		do_update_{{ distinct.name }}_array2;
+		do_update_{{ distinct.name }};
+	}
+	default_action: do_update_{{ distinct.name }}();
+	size : 5;
+}
+
+register {{ distinct.name }}_check_reg {
+	width : 1; 
+	instance_count : {{ distinct.conflict_num }}; 
+	direct : check_{{ distinct.name }};
+} 
+
+
+action do_check_{{ distinct.name }}() {
+	register_read({{ distinct.name }}_md.output, {{ distinct.name }}_check_reg);
+	register_write({{ distinct.name }}_check_reg, DUPLICATE);
+}
+
+table check_{{ distinct.name }} {
+	reads {
+	{% for key in distinct.key_fields %}
+		{{ key.p4 }} : exact;
+	{% endfor %}
+	}
+	actions {
+		do_check_{{ distinct.name }}；
+	}
+	size : {{ distinct.conflict_num }};
+}
+
+control {{ distinct.name }} {
+	apply(check_{{ distinct.name }}) { 
+		miss {
+			apply(hash_{{ distinct.name }});
+			apply(query_{{ distinct.name }});
+			apply(update_{{ distinct.name }});
+		}
+	}
+}
+
+{% endfor %}
+
+#endif /* _HYPERTESTER_QUERY_DISTINCT_H_ */

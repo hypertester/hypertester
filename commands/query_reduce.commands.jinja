@@ -1,0 +1,15 @@
+{% for reduce in reduce_queries %}
+{# rules for check_XXXX tables #}
+{% for fp in reduce.fps %}
+table_add check_{{ reduce.name }} do_check_{{ reduce.name }} {% for v in fp.values %} {{v}} {% endfor %}=> 
+{% endfor %}
+{# rules for check_XXXX tables #}
+{% for fp in reduce.fps %}
+table_add check_{{ reduce.name }} do_check_{{ reduce.name }} {% for v in fp.values %} {{v}} {% endfor %}=> 
+{% endfor %}
+{# rules for update_XXXX tables #}
+table_add update_{{ reduce.name }} do_not_update_{{ reduce.name }}_cnt1 0&&&0xFFFF 0&&&0 0&&&0 0&&&0 => 1
+table_add update_{{ reduce.name }} do_not_update_{{ reduce.name }}_cnt2 0&&&0 0&&&0xFFFF 0&&&0 0&&&0 => 2
+table_add update_{{ reduce.name }} do_update_{{ reudce.name }}_array1 0&&&0 0&&&0 0&&&0xFFFF 0&&&0 => 3
+table_add update_{{ reduce.name }} do_update_{{ reudce.name }}_array2 0&&&0 0&&&0 0&&&0 0&&&0xFFFF => 4
+{% endfor %}
