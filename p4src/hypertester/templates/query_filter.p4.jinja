@@ -1,0 +1,38 @@
+#ifndef _HYPERTESTER_QUERY_FILTER_H_
+#define _HYPERTESTER_QUERY_FILTER_H_
+
+#define PASS 1
+#define BLOCK 0
+
+{% for fl in filters %}
+
+header_type {{ fl.name }}_md_t {
+    fields {
+        output: 1;
+    }
+}
+metadata {{ fl.name }}_md_t {{ fl.name }}_md;
+
+
+action do_pass_{{ fl.name }} () {
+    modify_filed({{ fl.name }}_md.output, PASS);
+}
+table pass_{{ fl.name }} {
+    actions {
+        do_pass_{{ fl.name }} ;  
+    }
+    size : 1;
+    default_action: do_pass_{{ fl.name }};
+}
+
+control {{ fl.name }} {
+    if (
+        {{ fl.predicate.left }} {{ fl.predicate.op }} {{ fl.predicate.right }} 
+    ) {
+        apply(pass_{{ fl.name }});
+    }
+}
+
+{% endfor %}
+
+#endif /* _HYPERTESTER_QUERY_FILTER_H_ */

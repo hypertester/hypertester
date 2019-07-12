@@ -1,0 +1,160 @@
+#ifndef _HPERTESTER_EDITOR_H_
+#define _HPERTESTER_EDITOR_H_
+
+{% for editor in editors %}
+	{% if editor.type is "CONSTANT" %}
+// Nothing to do for constant editor: {{ editor.name }}
+	{% elif editor.type is "ARRAY" %}
+	
+	header_type {{ editor.name }}_md_t {
+		fields {
+			pkt_id : 32;
+		}
+	}
+	metadata {{ editor.name }}_md_t_md_t {{ editor.name }}_md;
+	register {{ editor.name }}_reg {
+		width : 32;
+		instance_count : {{ editor.size }};
+	}
+
+	action do_get_{{ editor.name }}_pkt_id (reg_id) {
+		register_read ({{ editor.name }}_md.pkt_id, {{ editor.name }}_reg, reg_id);
+		register_write ({{ editor.name }}_reg, reg_id, {{ editor.name }}_md.pkt_id + 1);
+	}
+	table get_{{ editor.name }}_pkt_id {
+		reads {
+			ht.template_id : exact;
+		}
+		actions {
+			do_get_{{ editor.name }}_pkt_id;
+		}
+		size : {{ editor.size }};
+	}
+
+	action do_set_{{ editor.name }} (
+		f{{ editor.fields[0].id }}
+		{% for field in editor.fields[1:] %}
+			, f{{ field.id }}
+		{% endfor %}
+	) {
+		{% for field in editor.fields[1:] %}
+			modify_field({{ field.p4 }}, f{{ field.id }});
+		{% endfor %}
+	}
+	action do_set_{{ editor.name }}_with_wrap (reg_id, 
+		{% for field in editor.fields %}
+			, f{{ field.id }}
+		{% endfor %}
+	) {
+		register_write ({{ editor.name }}_reg, reg_id, 0);
+		{% for field in editor.fields[1:] %}
+			modify_field({{ field.p4 }}, f{{ field.id }});
+		{% endfor %}
+	}
+	table set_{{ editor.name }} {
+		reads {
+			ht.template_id : exact;
+			{{ editor.name }}_md.pkt_id : exact;
+		}
+		actions { 
+			do_set_{{ editor.name }};
+			do_set_{{ editor.name }}_with_wrap;
+		}
+		size : {{ editor.size }};
+	}
+
+	control {{ editor.name }} {
+		apply(get_{{ editor.name }}_pkt_id);
+		apply(set_{{ editor.name }});
+	}
+
+	{% elif editor.type is "RANGE_ARRAY" %}
+
+	// NOTE: we only support one range array per set statement currently.
+
+	register {{ editor.name }}_reg {
+		width : {{ editor.fields[0].size }};
+		instance_count : 0;
+	}
+
+	action do_set_{{ editor.name }} (interval) {
+		register_read ({{ editor.fields[0].p4 }}, {{ editor.name }}_reg, 0);
+		register_write ({{ editor.name }}_reg, 0, {{ editor.name }}_md.pkt_id + interval);
+	}
+	table set_{{ editor.name }} {
+		reads {
+			ht.template_id : exact;
+		}
+		actions { 
+			do_set_{{ editor.name }};
+		}
+		size : {{ editor.size }};
+	}
+
+	action do_wrap_{{ editor.name }} (init_value) {
+		register_write ({{ editor.name }}_reg, 0, init_value);
+	}
+	table wrap_{{ editor.name }} {
+		reads {
+			ht.template_id : exact;
+			{{ editor.fields[0].p4 }} : exact;
+		}
+		actions { 
+			do_wrap_{{ editor.name }};
+		}
+		size : {{ editor.size }};
+	}
+
+	control {{ editor.name }} {
+		apply(set_{{ editor.name }});
+		apply(wrap_{{ editor.name }});
+	}
+
+	{% elif editor.type is "RANDOM_ARRAY" %}
+	
+	// NOTE: we only support one random array per set statement currently.
+	header_type {{ editor.name }}_md_t {
+		fields {
+			possibility : 16;
+		}
+	}
+	metadata {{ editor.name }}_md_t {{ editor.name }}_md;
+
+	action do_get_{{ editor.name }}_possibilty () {
+		modify_field_rng_uniform({{ editor.name }}_md.possibility, 0, 0xFFFF);
+	}
+	table get_{{ editor.name }}_possibilty {
+		action {
+			do_get_{{ editor.name }}_possibilty;
+		}
+		size : 1;
+		default_action: do_get_{{ editor.name }}_possibilty;
+	}
+	action do_set_{{ editor.name }} (lower_bound, upper_bound) {
+		modify_field_rng_uniform({{ editor.fields[0].p4 }}, lower_bound, upper_bound);
+	}
+	table set_{{ editor.name }} {
+		reads {
+			ht.template_id : exact;	
+			{{ editor.name }}_md.possibility : range;
+		}
+		actions {
+			do_set_{{ editor.name }};
+		}
+	}
+	
+	control {{ editor.name }} {
+		apply(get_{{ editor.name }}_possibilty);
+		apply(set_{{ editor.name }} );
+	}
+
+	{% endif %}
+{% endfor %}
+
+control editor {
+{% for editor in editors %}
+	{{ editor.name }}();
+{% endfor %}
+}
+
+#endif /* _HPERTESTER_EDITOR_H_ */
