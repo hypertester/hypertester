@@ -1,0 +1,101 @@
+#ifndef _HPERTESTER_TREIFFER_FIFO_H_
+#define _HPERTESTER_TREIFFER_FIFO_H_
+
+{% for fifo in trigger_fifos %}
+
+register {{ fifo.name }}_head {
+    width : 32;
+    instance_count : 1;
+}
+
+register {{ fifo.name }}_tail {
+    width : 32;
+    instance_count : 1;
+}
+
+header_type {{ fifo.name }}_md_t {
+    fields {
+        head_idx : 32;
+        tail_idx : 32;
+        idx : 32;
+        push_flag : 8;
+        pop_flag : 8;
+        {% for f in fifo.fields %}
+        {{ f.name }} : {{ f.size }};
+        {% endfor %}
+    }
+}
+metadata {{ fifo.name }}_md_t {{ fifo.name }}_md;
+
+action do_load_{{ fifo.name }}_idx() {
+    register_read({{ fifo.name }}_md.head_idx, {{ fifo.name }}_head, 0);
+    register_read({{ fifo.name }}_md.tail_idx, {{ fifo.name }}_tail, 0);
+}
+
+table load_{{ fifo.name }}_idx {
+    actions {
+        do_load_{{ fifo.name }}_idx;
+    }
+    size : 1;
+    default_action : do_load_{{ fifo.name }}_idx();
+}
+
+{% for f in fifo.fields %}
+
+register {{ fifo.name }}_{{ f.name }}_reg {
+    width : f.size;
+    instance_count : {{ fifo.size }};
+}
+
+{% endfor %}
+
+action do_push_{{ fifo.name }} () {
+    register_read({{ fifo.name }}_md.idx, {{ fifo.name }}_head, 0);
+    register_write({{ fifo.name }}_head, 0, {{ fifo.name }}_md.idx + 1);
+    {% for f in fifo.fields %}
+    register_write({{ fifo.name }}_{{ f.name }}_reg, {{ fifo.name }}_md.idx % {{ fifo.size }}, {{ fifo.name }}_md.{{ f.name }});
+    {% endfor %}
+}
+
+table push_{{ fifo.name }} {
+    actions {
+        do_push_{{ fifo.name }};
+    }
+    size : 1;
+    default_action : do_push_{{ fifo.name }};
+}
+
+action do_pop_{{ fifo.name }} () {
+    register_read({{ fifo.name }}_md.idx, {{ fifo.name }}_tail, 0);
+    register_write({{ fifo.name }}_tail, 0, {{ fifo.name }}_md.idx + 1);
+    {% for f in fifo.fields %}
+    register_read({{ fifo.name }}_md.{{ f.name }}, {{ fifo.name }}_md.{{ f.name }}, {{ fifo.name }}_{{ f.name }}_reg, {{ fifo.name }}_md.idx % {{ fifo.size }});
+    {% endfor %}
+    modify_field({{ fifo.name }}_md.pop_flag, 1);
+}
+
+table pop_{{ fifo.name }} {
+    actions {
+        do_pop_{{ fifo.name }};
+    }
+    size : 1;
+    default_action : do_pop_{{ fifo.name }};
+}
+
+control {{ fifo.name }} {
+    if (valid(ht)) {
+        if (ht.template_id == {{ fifo.template_id }}) {
+            apply(load_{{ fifo.name }}_idx);
+            if({{ fifo.name }}_md.head_idx > {{ fifo.name }}_md.tail_idx) {
+                apply(pop_{{ fifo.name }});  
+            }
+        }
+    } else {
+        if ({{ fifo.name }}_md.push_flag == 1) {
+            apply(push_{{ fifo.name }});
+        }
+    }
+}
+
+{% endfor %}
+#endif /* _HPERTESTER_TREIFFER_FIFO_H_ */

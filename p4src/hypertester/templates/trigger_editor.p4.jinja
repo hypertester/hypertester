@@ -147,7 +147,27 @@
 		apply(get_{{ editor.name }}_possibilty);
 		apply(set_{{ editor.name }} );
 	}
-
+	
+	{% elif editor.type is "FIFO_EDITOR" %}
+	
+	// NOTE: we only support one random array per set statement currently.
+	action do_set_{{ editor.name }} () {
+		{% for f in editor.fifo.fields %}
+		modify_field({{ f.p4 }}, {{ editor.fifo.name }}_md.{{ f.name }});
+		{% endfor %}
+	}
+	table set_{{ editor.name }} {
+		reads {
+			ht.template_id : exact;	
+			{{ editor.fifo }}.pop_flag : exact;
+		}
+		actions {
+			do_set_{{ editor.name }};
+		}
+	}
+	control {{ editor.name }} {
+		apply(set_{{ editor.name }} );
+	}
 	{% endif %}
 {% endfor %}
 

@@ -3,6 +3,7 @@
 
 #include "accelerator.p4"
 #include "replicator.p4"
+#include "trigger_fifo.p4"
 #include "editor.p4"
 
 action do_remove_ht_hdr() {
@@ -21,6 +22,7 @@ control trigger_ingress {
     if (valid(ht)) {
         replicator();
     }
+    trigger_fifo();
 }
 
 control trigger_egress {
@@ -29,7 +31,7 @@ control trigger_egress {
         // if ( standard_metadata.egress_port == A_SPECFIC_PORT ){
         //template pkts that will be recirculated
             accelerator();
-        }else{
+        } else {
         //pkts modified by editor, then sent out
             apply(remove_ht_hdr);
             editor();
