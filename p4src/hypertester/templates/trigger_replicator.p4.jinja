@@ -8,7 +8,7 @@ action goto_cr_replicator () {}
 // RANDOM_RATE shortened as rr
 action goto_rr_replicator () {}
 
-{% if len(replicators) > 1 %}
+{% if replicators[1] == None %}
 // tell the compiler that different replicator can be allocated at the same physical stage.
 table select_replicator {
 	reads {
@@ -16,11 +16,11 @@ table select_replicator {
 	}
 	actions {
 	{% for replicator in replicators %}
-		{% if replicator.type is "FULL_SPEED" %}
+		{% if replicator.type == "FULL_SPEED" %}
 		goto_fs_replicator;
-		{% elif replicator.type is "CONSTANT_RATE" %}
+		{% elif replicator.type == "CONSTANT_RATE" %}
 		goto_cr_replicator;
-		{% elif replicator.type is "RANDOM_RATE" %}
+		{% elif replicator.type == "RANDOM_RATE" %}
 		goto_rr_replicator;
 		{% endif %}
 	{% endfor %}
@@ -29,177 +29,171 @@ table select_replicator {
 {% endif %}
 
 {% for replicator in replicators %}
-// replicator {{ replicator.name }} 
-// speed Type : {{ replicator.type }}
+// Speed Type : {{ replicator.type }}
 	
-	{% if replicator.type is "FULL_SPEED" %}
-	table fs_replicate {
-		reads {
-			ht.template_id : exact;
-		}
-		actions {
-			do_multicast;
-		}
-		size : {{ replicator.size }};
-	}
-	control fs_replicator {
-		apply(fs_replicate);
-	}
+{% if replicator.type == "FULL_SPEED" %}
+table fs_replicate {
+    reads {
+        ht.template_id : exact;
+    }
+    actions {
+        do_multicast;
+    }
+    size : {{ replicator.size }};
+}
+control fs_replicator {
+    apply(fs_replicate);
+}
+{% elif replicator.type == "CONSTANT_RATE" %}
+header_type rc_md_t {
+    fields {
+        last_timestamp : 32;
+    }
+}
+metadata rc_md_t rc_md;
+register rc_reg {
+    width : 48;
+    instance_count : {{ replicator.size }};
+}
+action do_load_cr_timestamp (reg_id) {
+    register_read(rc_md.last_timestamp, rc_reg, reg_id);
+}
+table load_cr_timestamp {
+    reads {
+        ht.template_id : exact;
+    }
+    actions {
+        do_load_cr_timestamp;
+    }
+    size : {{ replicator.size }};
+}
+action do_cr_multicast (reg_id, grp) {
+    register_write(rc_reg, reg_id, ig_ts);
+    do_multicast(grp);
+}
+table rc_replicate {
+    reads {
+        ht.template_id : exact;
+    }
+    actions {
+        do_cr_multicast;
+    }
+    size : {{ replicator.size }};
+}
+control rc_replicator {
+    apply(load_cr_timestamp);
+    if (ig_ts - rc_md.last_timestamp> ht.pkt_interval ){
+        apply(rc_replicate);
+    }
+}
+{% elif replicator.type == "RANDOM_RATE" %}
+header_type rr_md_t {
+    fields {
+        possibility  : 16;
+    }
+}
+metadata rr_md_t rr_md;
 
-	{% elif replicator.type is "RATE_CONTROL" %}
-	header_type rc_md_t {
-		fields {
-			last_timestamp : 32;
-		}
-	}
-	metadata rc_md_t rc_md;
-	register rc_reg {
-		width : 48;
-		instance_count : {{ replicator.size }};
-	}
-	action do_load_cr_timestamp (reg_id) {
-		register_read(rc_md.last_timestamp, rc_reg, reg_id);
-	}
-	table load_cr_timestamp {
-		reads {
-			ht.template_id : exact;
-		}
-		actions {
-			do_load_cr_timestamp;
-		}
-		size : {{ replicator.size }};
-	}
-	action do_cr_multicast (reg_id, grp) {
-		register_write(rc_reg, reg_id, ig_ts);	
-		do_multicast(grp);
-	}
-	table rc_replicate {
-		reads {
-			ht.template_id : exact;	
-		}
-		actions {
-			do_cr_multicast;
-		}
-		size : {{ replicator.size }};
-	}
-	control rc_replicator {
-		apply(load_cr_timestamp);
-		if (ig_ts - rc_md.last_timestamp> ht.pkt_interval ){
-			apply(rc_replicate);
-		}
-	}
+action do_get_rr_possibilty () {
+    modify_field_rng_uniform(rr_md.possibility, 0, 0xFFFF);
+}
+table get_rr_possibilty {
+    action {
+        do_get_rr_possibilty;
+    }
+    size : 1;
+    default_action: do_get_rr_possibilty;
+}
+action do_get_rr_interval (lower_bound, upper_bound) {
+    modify_field_rng_uniform(ht.pkt_interval, lower_bound, upper_bound);
+}
+table get_rr_interval {
+    reads {
+        ht.template_id : exact;
+        rr_md.possibility : range;
+    }
+    actions {
+        do_get_rr_interval;
+    }
+    size : {{ replicator.size }};
+}
 
-	{% elif replicator.type is "RANDOM_CONTROL" %}
-	header_type rr_md_t {
-		fields {
-			possibility  : 16;
-		}
-	}
-	metadata rr_md_t rr_md;
+register rr_reg {
+    width : 48;
+    instance_count : {{ replicator.size }};
+}
 
-	action do_get_rr_possibilty () {
-		modify_field_rng_uniform(rr_md.possibility, 0, 0xFFFF);
-	}
-	table get_rr_possibilty {
-		action {
-			do_get_rr_possibilty;
-		}
-		size : 1;
-		default_action: do_get_rr_possibilty;
-	}
-	action do_get_rr_interval (lower_bound, upper_bound) {
-		modify_field_rng_uniform(ht.pkt_interval, lower_bound, upper_bound);
-	}
-	table get_rr_interval {
-		reads {
-			ht.template_id : exact;	
-			rr_md.possibility : range;
-		}
-		actions {
-			do_get_rr_interval;
-		}
-		size : {{ replicator.size }};
-	}
-	
-	register rr_reg {
-		width : 48;
-		instance_count : {{ replicator.size }};
-	}
+action do_load_rr_timestamp (reg_id) {
+    register_read(rr_md.last_timestamp, rc_reg, reg_id);
+}
+table load_rr_timestamp {
+    reads {
+        ht.template_id : exact;
+    }
+    actions {
+        do_load_rr_timestamp;
+    }
+    size : {{ replicator.size }};
+}
 
-	action do_load_rr_timestamp (reg_id) {
-		register_read(rr_md.last_timestamp, rc_reg, reg_id);
-	}
-	table load_rr_timestamp {
-		reads {
-			ht.template_id : exact;
-		}
-		actions {
-			do_load_rr_timestamp;
-		}
-		size : {{ replicator.size }};
-	}
+action do_rr_multicast (reg_id, grp) {
+    register_write(rc_reg, reg_id, ig_ts);
+    do_multicast(grp);
+}
+table rr_replicate {
+    reads {
+        ht.template_id : exact;
+    }
+    actions {
+        do_cr_multicast;
+    }
+    size : {{ replicator.size }};
+}
 
-	action do_rr_multicast (reg_id, grp) {
-		register_write(rc_reg, reg_id, ig_ts);	
-		do_multicast(grp);
-	}
-	table rr_replicate {
-		reads {
-			ht.template_id : exact;	
-		}
-		actions {
-			do_cr_multicast;
-		}
-		size : {{ replicator.size }};
-	}
-
-	control rr_replicator {
-		apply(load_rr_timestamp);
-		if (ig_ts - rr_md.last_timestamp> ht.pkt_interval ){
-			apply(rr_replicate) {
-				do_rr_multicast {
-					apply(get_rr_possibilty);
-					apply(get_rr_interval);
-				}
-			}
-		}
-	}
-
-	{% endif %}
+control rr_replicator {
+    apply(load_rr_timestamp);
+    if (ig_ts - rr_md.last_timestamp> ht.pkt_interval ){
+        apply(rr_replicate) {
+            do_rr_multicast {
+                apply(get_rr_possibilty);
+                apply(get_rr_interval);
+            }
+        }
+    }
+}
+{%- endif %}
 {% endfor %}
-
-
 /* replicator: performs rate-controled packet replication to template pkts.*/
-control replicator{
-{% if len(replicators) > 1 %}
+control replicator {
+{%- if replicators[1] == None %}
 	apply(select_replicator) {
-	{% for replicator in replicators %}
-		{% if replicator.type is "FULL_SPEED" %}
-		goto_fs_replicator {
-			fs_replicator();
-		}
-		{% elif replicator.type is "CONSTANT_RATE" %}
-		goto_cr_replicator {
-			cr_replicator();
-		}
-		{% elif replicator.type is "RANDOM_RATE" %}
-		goto_rr_replicator {
-			rr_replicator();
-		}
-		{% endif %}
+	{%- for replicator in replicators %}
+    {% if replicator.type == "FULL_SPEED" %}
+    goto_fs_replicator {
+        fs_replicator();
+    }
+    {% elif replicator.type == "CONSTANT_RATE" %}
+    goto_cr_replicator {
+        cr_replicator();
+    }
+    {% elif replicator.type == "RANDOM_RATE" %}
+    goto_rr_replicator {
+        rr_replicator();
+    }
+    {% endif %}
 	{% endfor %}
 	}
 {% else %}
-	{% for replicator in replicators %}
-		{% if replicator.type is "FULL_SPEED" %}
-		fs_replicator();
-		{% elif replicator.type is "CONSTANT_RATE" %}
-		cr_replicator();
-		{% elif replicator.type is "RANDOM_RATE" %}
-		rr_replicator();
-		{% endif %}
-	{% endfor %}
-{% endif %}	
+{%- for replicator in replicators %}
+    {%- if replicator.type == "FULL_SPEED" %}
+    fs_replicator();
+    {%- elif replicator.type == "CONSTANT_RATE" %}
+    cr_replicator();
+    {%- elif replicator.type == "RANDOM_RATE" %}
+    rr_replicator();
+    {%- endif %}
+{% endfor -%}
+{% endif -%}
 }
 
 #endif /* _HYPERTESTER_REPLICATOR_H_ */

@@ -1,10 +1,10 @@
 #ifndef _HYPERTESTER_TRIGGER_H_
 #define _HYPERTESTER_TRIGGER_H_
 
-#include "accelerator.p4"
-#include "replicator.p4"
+#include "trigger_accelerator.p4"
+#include "trigger_replicator.p4"
 #include "trigger_fifo.p4"
-#include "editor.p4"
+#include "trigger_editor.p4"
 
 action do_remove_ht_hdr() {
     modify_field(ethernet.ether_type, ht.ether_type);
