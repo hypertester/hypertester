@@ -1,0 +1,27 @@
+{%- for editor in editors -%}
+{%- if editor.type == "ARRAY" -%}
+{%- for template in editor.templates %}
+table add get_{{ editor.name }}_pkt_id do_get_{{ editor.name }}_pkt_id {{ template.id }} => {{ template.reg_id }}
+{%- for pkt in template.packets[:-1] %}
+table add set_{{ editor.name }} do_set_{{ editor.name }} {{ template.id }} {{ pkt.id }} => {% for v in pkt.values %} {{ v }} {% endfor %}
+{%- endfor %}
+table add set_{{ editor.name }} do_set_{{ editor.name }}_with_wrap {{ template.id }} {{ template.packets[-1].id }} => {% for v in template.packets[-1].values %} {{ v }} {% endfor %}
+{%- endfor %}
+{%- elif editor.type == "RANGE_ARRAY" -%}
+{%- for template in editor.templates %}
+register write {{ editor.name }}_reg  {{ template.reg_id }} {{ template.initial_value }}
+table add set_{{ editor.name }} do_set_{{ editor.name }} {{ template.id }} => {{ template.interval }}
+table add wrap_{{ editor.name }} do_wrap_{{ editor.name }} {{ template.id }} {{ template.last_value }}  => {{ template.initial_value }}
+{%- endfor %}
+{%- elif editor.type == "RANDOM_ARRAY" %}
+{%- for template in editor.templates %}
+{%- for slice in template.slices  %}
+table add set_{{ editor.name }} do_set_{{ editor.name }} {{ template.id }} {{ slice.low }}-{{ slice.high }} => {{ slice.low_value_bound }} {{ slice.high_value_bound }}
+{%- endfor %}
+{%- endfor %}
+{%- elif editor.type == "FIFO_EDITOR" %}
+{%- for template in editor.templates %}
+table add set_{{ editor.name }} do_set_{{ editor.name }} {{ template.id }} 1 =>
+{%- endfor %}
+{%- endif -%}
+{%- endfor -%}

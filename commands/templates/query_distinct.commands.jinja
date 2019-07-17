@@ -1,0 +1,15 @@
+{% for distinct in distinct_queries %}
+{# rules for check_XXXX tables #}
+{% for fp in distinct.fps %}
+table_add check_{{ distinct.name }} do_check_{{ distinct.name }} {% for v in fp.values %} {{v}} {% endfor %}=> 
+{% endfor %}
+{# rules for check_XXXX tables #}
+{% for fp in distinct.fps %}
+table_add check_{{ distinct.name }} do_check_{{ distinct.name }} {% for v in fp.values %} {{v}} {% endfor %}=> 
+{% endfor %}
+{# rules for update_XXXX tables #}
+table_add update_{{ distinct.name }} do_not_update_{{ distinct.name }} 0&&&0xFFFF 0&&&0 0&&&0 0&&&0 => 1
+table_add update_{{ distinct.name }} do_not_update_{{ distinct.name }}  0&&&0 0&&&0xFFFF 0&&&0 0&&&0 => 2
+table_add update_{{ distinct.name }} do_update_{{ distinct.name }}_array1 0&&&0 0&&&0 0&&&0xFFFF 0&&&0 => 3
+table_add update_{{ distinct.name }} do_update_{{ distinct.name }}_array2  0&&&0 0&&&0 0&&&0 0&&&0xFFFF => 4
+{% endfor %}
