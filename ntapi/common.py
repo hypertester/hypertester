@@ -17,6 +17,7 @@ def parse_p4_headers():
             d[hdr_def[k]+'.'+field.strip()]=int(width)
     return d
 HEADER_FIELDS = parse_p4_headers()
+CONTRL_FIELDS = ["pktlen", "port", "loop", "postpone"] #interval, qid moved to trigger init
 
 ####
 # Base Container
@@ -43,9 +44,8 @@ class HTError(Exception):
 
 class HTValueTypeError(HTError): pass
 class HTTriggerError(HTError): pass
+class HTQueryError(HTError): pass
 class HTUtilError(HTError): pass
-class TriggerParamTypeError(HTError): pass
-class TriggerSetListLengthNotMatchError(HTError): pass
 
 
 ####
@@ -53,7 +53,7 @@ class TriggerSetListLengthNotMatchError(HTError): pass
 ####
 
 class HTValue:
-    VALUE_TYPE = ['CONSTANT', 'ARRAY', 'RANGE_ARRAY', 'RANDOM_ARRAY']
+    VALUE_TYPE = ['CONSTANT', 'ARRAY', 'RANGE_ARRAY', 'RANDOM_ARRAY', 'QUERY_FIELD']
     def __init__(self, *args, **kwargs):
         if len(args) != 2:
             raise HTValueTypeError("HTValue expects 2 argument but given " + str(len(args)))
@@ -65,6 +65,9 @@ class HTValue:
             raise HTValueTypeError("second arguement of ARRAY type HTValue must have a type of list.")
         if self.type == "RANGE_ARRAY" and ( not isinstance(self.value, tuple) or len(self.value) != 3 ) :
             raise HTValueTypeError("HTValue of RANGE_ARRAY takes (begin, stop, step) as value.")
+        if self.type == "QUERY_FIELD" and ( not isinstance(self.value, str) ):
+            raise HTValueTypeError("HTValue of RANGE_ARRAY takes a 'str' as value.")
+
     def __repr__(self):
         return self.type + ', ' + repr(self.value)
 
