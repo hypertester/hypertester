@@ -1,6 +1,5 @@
-####
-# Definations
-####
+# Author: Dai Zhang
+
 
 import re
 def parse_p4_headers():
@@ -16,8 +15,8 @@ def parse_p4_headers():
             field, width = hdr_field.replace(';','').split(':')
             d[hdr_def[k]+'.'+field.strip()]=int(width)
     return d
-HEADER_FIELDS = parse_p4_headers()
-CONTRL_FIELDS = ["pktlen", "port", "loop", "postpone"] #interval, qid moved to trigger init
+# HEADER_FIELDS = parse_p4_headers()
+# CONTRL_FIELDS = ["pktlen", "port", "loop", "postpone"] #interval, qid moved to trigger init
 
 ####
 # Base Container
@@ -42,40 +41,31 @@ class HTError(Exception):
     def __init__(self, message=None):
         self.message = message
 
-class HTValueTypeError(HTError): pass
-class HTTriggerError(HTError): pass
-class HTQueryError(HTError): pass
-class HTUtilError(HTError): pass
+
+class HTValueTypeError(HTError):
+    pass
+
+
+class HTTriggerError(HTError):
+    pass
+
+
+class HTQueryError(HTError):
+    pass
+
+
+class HTUtilError(HTError):
+    pass
 
 
 ####
 # Data Structures
 ####
 
-class HTValue:
-    VALUE_TYPE = ['CONSTANT', 'ARRAY', 'RANGE_ARRAY', 'RANDOM_ARRAY', 'QUERY_FIELD']
-    def __init__(self, *args, **kwargs):
-        if len(args) != 2:
-            raise HTValueTypeError("HTValue expects 2 argument but given " + str(len(args)))
-        if args[0] not in HTValue.VALUE_TYPE:
-            raise HTValueTypeError(repr(args[0]) + " is not a legal type for HTValue.")
-        self.type = args[0]
-        self.value = args[1]
-        if self.type == "ARRAY" and not isinstance(self.value, list):
-            raise HTValueTypeError("second arguement of ARRAY type HTValue must have a type of list.")
-        if self.type == "RANGE_ARRAY" and ( not isinstance(self.value, tuple) or len(self.value) != 3 ) :
-            raise HTValueTypeError("HTValue of RANGE_ARRAY takes (begin, stop, step) as value.")
-        if self.type == "QUERY_FIELD" and ( not isinstance(self.value, str) ):
-            raise HTValueTypeError("HTValue of RANGE_ARRAY takes a 'str' as value.")
-
-    def __repr__(self):
-        return self.type + ', ' + repr(self.value)
-
-
 ## Tests
 if __name__ == "__main__":
-    print(len(HEADER_FIELDS))
-    print(HEADER_FIELDS)
+    # print(len(HEADER_FIELDS))
+    # print(HEADER_FIELDS)
 
     a = emptyclass()
     a.a = 1

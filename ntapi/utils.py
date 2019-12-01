@@ -1,4 +1,4 @@
-from common import *
+from hypertester.common import *
 
 def generate_uid(*args):
     if args[0] == 'replicator':
